@@ -4,6 +4,8 @@ import FreetCollection from './collection';
 import * as userValidator from '../user/middleware';
 import * as freetValidator from '../freet/middleware';
 import * as util from './util';
+import UserCollection from '../user/collection';
+import { HydratedDocument } from 'mongoose';
 
 const router = express.Router();
 
@@ -18,18 +20,18 @@ const router = express.Router();
 /**
  * Get freets by author.
  *
- * @name GET /api/freets?author=username
+ * @name GET /api/freets?authorId=id
  *
- * @return {FreetResponse[]} - An array of freets created by user with username, author
- * @throws {400} - If author is not given
- * @throws {404} - If no user has given author
+ * @return {FreetResponse[]} - An array of freets created by user with id, authorId
+ * @throws {400} - If authorId is not given
+ * @throws {404} - If no user has given authorId
  *
  */
 router.get(
   '/',
   async (req: Request, res: Response, next: NextFunction) => {
-    // Check if author query parameter was supplied
-    if (req.query.author !== undefined) {
+    // Check if authorId query parameter was supplied
+    if (req.query.friendsOf !== undefined || req.query.author !== undefined) {
       next();
       return;
     }
@@ -42,9 +44,21 @@ router.get(
     userValidator.isAuthorExists
   ],
   async (req: Request, res: Response) => {
-    const authorFreets = await FreetCollection.findAllByUsername(req.query.author as string);
-    const response = authorFreets.map(util.constructFreetResponse);
-    res.status(200).json(response);
+    if (req.query.friends){
+      const author = await UserCollection.findOneByUsername(req.query.author as string);
+      const authorFriends = author.friends;
+      const allFriendFreets = [];
+      for (let friend of authorFriends){
+        let friendFreets = await FreetCollection.findAllByUsername(friend);
+        allFriendFreets.push(friendFreets.filter((freet) => freet.anonymous !== "on").map(util.constructFreetResponse));
+      }
+      res.status(200).json(allFriendFreets);
+    } else {
+      const authorFreets = await FreetCollection.findAllByUsername(req.query.author as string);
+      const response = authorFreets.filter((freet) => freet.anonymous !== "on").map(util.constructFreetResponse);
+      res.status(200).json(response);
+    }
+
   }
 );
 
@@ -67,7 +81,7 @@ router.post(
   ],
   async (req: Request, res: Response) => {
     const userId = (req.session.userId as string) ?? ''; // Will not be an empty string since its validated in isUserLoggedIn
-    const freet = await FreetCollection.addOne(userId, req.body.content);
+    const freet = await FreetCollection.addOne(userId, req.body.content, req.body.anonymous);
 
     res.status(201).json({
       message: 'Your freet was created successfully.',
@@ -104,9 +118,11 @@ router.delete(
 /**
  * Modify a freet
  *
- * @name PATCH /api/freets/:id
+ * @name PUT /api/freets/:id
  *
- * @param {string} content - the new content for the freet
+ * @param {string} content - the new content for the freet, if owner is modifying
+ * @param {string} user - user who is upvoting or downvoting
+ * @param {string} vote - how the user is voting, if changing vote
  * @return {FreetResponse} - the updated freet
  * @throws {403} - if the user is not logged in or not the author of
  *                 of the freet
@@ -114,11 +130,25 @@ router.delete(
  * @throws {400} - If the freet content is empty or a stream of empty spaces
  * @throws {413} - If the freet content is more than 140 characters long
  */
-router.patch(
+router.put(
   '/:freetId?',
   [
     userValidator.isUserLoggedIn,
     freetValidator.isFreetExists,
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (req.body.content !== undefined){
+      next();
+      return;
+    }
+    const freet = await FreetCollection.updateOneVote(req.params.freetId, req.session.userId, req.body.vote);
+    res.status(200).json({
+      message: 'You have successfully voted on this freet',
+      freet: util.constructFreetResponse(freet)
+    })
+  },
+
+  [
     freetValidator.isValidFreetModifier,
     freetValidator.isValidFreetContent
   ],

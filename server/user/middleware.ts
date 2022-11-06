@@ -1,4 +1,5 @@
 import type {Request, Response, NextFunction} from 'express';
+import {Types} from 'mongoose';
 import UserCollection from '../user/collection';
 
 /**
@@ -13,7 +14,9 @@ const isCurrentSessionUserExists = async (req: Request, res: Response, next: Nex
     if (!user) {
       req.session.userId = undefined;
       res.status(500).json({
-        error: 'User session was not recognized.'
+        error: {
+          userNotFound: 'User session was not recognized.'
+        }
       });
       return;
     }
@@ -23,13 +26,37 @@ const isCurrentSessionUserExists = async (req: Request, res: Response, next: Nex
 };
 
 /**
+ * Checks if the user id in req is a real user
+ */
+const isFriendExists = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.query.friend) {
+    res.status(400).json({
+      error: 'Provided friend id must be nonempty.'
+    });
+    return;
+  }
+
+  const user = await UserCollection.findOneByUsername(req.query.friend as string)
+  if (!user) {
+    res.status(404).json({
+      error: `A user with username ${req.query.friend as string} does not exist.`
+    });
+    return;
+  }
+
+  next();
+}
+
+/**
  * Checks if a username in req.body is valid, that is, it matches the username regex
  */
 const isValidUsername = (req: Request, res: Response, next: NextFunction) => {
   const usernameRegex = /^\w+$/i;
-  if (!usernameRegex.test(req.body.username)) {
+  if (req.body.username !== undefined && !usernameRegex.test(req.body.username)) {
     res.status(400).json({
-      error: 'Username must be a nonempty alphanumeric string.'
+      error: {
+        username: 'Username must be a nonempty alphanumeric string.'
+      }
     });
     return;
   }
@@ -42,9 +69,11 @@ const isValidUsername = (req: Request, res: Response, next: NextFunction) => {
  */
 const isValidPassword = (req: Request, res: Response, next: NextFunction) => {
   const passwordRegex = /^\S+$/;
-  if (!passwordRegex.test(req.body.password)) {
+  if (req.body.password !== undefined && !passwordRegex.test(req.body.password)) {
     res.status(400).json({
-      error: 'Password must be a nonempty string.'
+      error: {
+        password: 'Password must be a nonempty string.'
+      }
     });
     return;
   }
@@ -78,20 +107,20 @@ const isAccountExists = async (req: Request, res: Response, next: NextFunction) 
  * Checks if a username in req.body is already in use
  */
 const isUsernameNotAlreadyInUse = async (req: Request, res: Response, next: NextFunction) => {
-  if (req.body.username !== undefined) { // If username is not being changed, skip this check
-    const user = await UserCollection.findOneByUsername(req.body.username);
+  const user = await UserCollection.findOneByUsername(req.body.username);
 
-    // If the current session user wants to change their username to one which matches
-    // the current one irrespective of the case, we should allow them to do so
-    if (user && (user?._id.toString() !== req.session.userId)) {
-      res.status(409).json({
-        error: 'An account with this username already exists.'
-      });
-      return;
-    }
+  // If the current session user wants to change their username to one which matches
+  // the current one irrespective of the case, we should allow them to do so
+  if (user === undefined || !user || (user?._id.toString() === req.session.userId)) {
+    next();
+    return;
   }
 
-  next();
+  res.status(409).json({
+    error: {
+      username: 'An account with this username already exists.'
+    }
+  });
 };
 
 /**
@@ -100,7 +129,9 @@ const isUsernameNotAlreadyInUse = async (req: Request, res: Response, next: Next
 const isUserLoggedIn = (req: Request, res: Response, next: NextFunction) => {
   if (!req.session.userId) {
     res.status(403).json({
-      error: 'You must be logged in to complete this action.'
+      error: {
+        auth: 'You must be logged in to complete this action.'
+      }
     });
     return;
   }
@@ -144,13 +175,32 @@ const isAuthorExists = async (req: Request, res: Response, next: NextFunction) =
   next();
 };
 
+/**
+ * Checks if a friendId is not the same as the user's id
+ */
+const isFriendDifferentThanUser = async(req: Request, res: Response, next: NextFunction) => {
+  if (req.query.friend !== undefined){
+    const user = await UserCollection.findOneByUserId(req.session.userId);
+    const friendName = req.query.friend as string;
+    if (friendName === user.username){
+      res.status(404).json({
+        error: 'You can\'t friend yourself'
+      })
+      return;
+    }
+  }
+  next();
+}
+
 export {
   isCurrentSessionUserExists,
+  isFriendExists,
   isUserLoggedIn,
   isUserLoggedOut,
   isUsernameNotAlreadyInUse,
   isAccountExists,
   isAuthorExists,
   isValidUsername,
-  isValidPassword
+  isValidPassword,
+  isFriendDifferentThanUser,
 };

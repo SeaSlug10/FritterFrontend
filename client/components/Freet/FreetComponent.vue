@@ -61,6 +61,13 @@
         <p>{{ alert }}</p>
       </article>
     </section>
+    <form>
+      <input type="radio" id="monch" name="upvote" value="Upvote">
+      <label for="monch">Monch &#128069;</label>   
+      <input type="radio" id="mash" name="downvote" value="Upvote">
+      <label for="mash">Mash &#129314;</label>
+    </form>
+
   </article>
 </template>
 
@@ -168,8 +175,16 @@ export default {
 
 <style scoped>
 .freet {
-    border: 1px solid #111;
+    background-color: #171A21;
+    color: white;
+    border: 3px solid #00A6ED;
     padding: 20px;
     position: relative;
+    margin: 5px
+}
+
+.info {
+  color: rgb(124, 144, 160);
+  font-size: 12px;
 }
 </style>

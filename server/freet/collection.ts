@@ -19,13 +19,14 @@ class FreetCollection {
    * @param {string} content - The id of the content of the freet
    * @return {Promise<HydratedDocument<Freet>>} - The newly created freet
    */
-  static async addOne(authorId: Types.ObjectId | string, content: string): Promise<HydratedDocument<Freet>> {
+  static async addOne(authorId: Types.ObjectId | string, content: string, anonymous: boolean): Promise<HydratedDocument<Freet>> {
     const date = new Date();
     const freet = new FreetModel({
       authorId,
       dateCreated: date,
       content,
-      dateModified: date
+      dateModified: date,
+      anonymous
     });
     await freet.save(); // Saves freet to MongoDB
     return freet.populate('authorId');
@@ -59,7 +60,24 @@ class FreetCollection {
    */
   static async findAllByUsername(username: string): Promise<Array<HydratedDocument<Freet>>> {
     const author = await UserCollection.findOneByUsername(username);
-    return FreetModel.find({authorId: author._id}).sort({dateModified: -1}).populate('authorId');
+    return FreetModel.find({authorId: author._id}).populate('authorId');
+  }
+
+  /**
+   * Get freets from friends for user
+   * 
+   * @param {string} userId - the user to get feed for
+   * @return {Promise<HydratedDocument<Freet>[]>} - An array of the freets
+   */
+  static async findFriendFreets(userId: string): Promise<Array<HydratedDocument<Freet>>> {
+    const user = await UserCollection.findOneByUsername(userId);
+    const friendPosts: Array<HydratedDocument<Freet>> = [];
+    for (let friendname of user.friends){
+      console.log(friendname)
+      const friendFreets = await this.findAllByUsername(friendname);
+      friendPosts.concat(friendFreets);
+    }
+    return friendPosts;
   }
 
   /**
@@ -75,6 +93,49 @@ class FreetCollection {
     freet.dateModified = new Date();
     await freet.save();
     return freet.populate('authorId');
+  }
+
+  /**
+   * Update a freet with an upvote or downvote
+   * 
+   * @param {string} freetId - the id fo the freet to be updated
+   * @param {string} user - user who is voting
+   * @param {string} vote - whether upvoting or downvoting, if undefined remove any vote from user
+   * 
+   * @return {Promise<HydratedDocument<Freet>>} - the updated freet
+   */
+  static async updateOneVote(freetId: Types.ObjectId | string, user: string, vote: string): Promise<HydratedDocument<Freet>>{
+    const freet = await FreetModel.findOne({_id: freetId});
+    //if no vote, try to remove user's current vote
+    if (vote === "no vote"){
+      if (freet.upvoters.includes(user)){
+        const index = freet.upvoters.indexOf(user);
+        freet.upvoters.splice(index, 1);
+      } else if (freet.downvoters.includes(user)){
+        const index = freet.downvoters.indexOf(user);
+        freet.downvoters.splice(index, 1);
+      }
+    //if vote is upvote, add user to upvotes if not already there, and remove from downvoters if applicable
+    } else if (vote === 'upvote') {
+      if (!freet.upvoters.includes(user)){
+        freet.upvoters.push(user);
+      }
+      if (freet.downvoters.includes(user)){
+        const index = freet.downvoters.indexOf(user);
+        freet.downvoters.splice(index, 1);
+      }
+    } else {
+      if (!freet.downvoters.includes(user)){
+        freet.downvoters.push(user);
+      }
+      if (freet.upvoters.includes(user)){
+        const index = freet.upvoters.indexOf(user);
+        freet.upvoters.splice(index, 1);
+      }
+    }
+    freet.dateModified = new Date();
+    await freet.save();
+    return freet.populate('authorId')
   }
 
   /**

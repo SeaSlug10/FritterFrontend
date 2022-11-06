@@ -1,4 +1,4 @@
-import type {Request, Response} from 'express';
+import type {NextFunction, Request, Response} from 'express';
 import express from 'express';
 import FreetCollection from '../freet/collection';
 import UserCollection from './collection';
@@ -6,27 +6,6 @@ import * as userValidator from '../user/middleware';
 import * as util from './util';
 
 const router = express.Router();
-
-/**
- * Get the signed in user
- * TODO: may need better route and documentation
- * (so students don't accidentally delete this when copying over)
- *
- * @name GET /api/users/session
- *
- * @return - currently logged in user, or null if not logged in
- */
-router.get(
-  '/session',
-  [],
-  async (req: Request, res: Response) => {
-    const user = await UserCollection.findOneByUserId(req.session.userId);
-    res.status(200).json({
-      message: 'Your session info was found successfully.',
-      user: user ? util.constructUserResponse(user) : null
-    });
-  }
-);
 
 /**
  * Sign in user.
@@ -118,7 +97,7 @@ router.post(
 /**
  * Update a user's profile.
  *
- * @name PATCH /api/users
+ * @name PUT /api/users
  *
  * @param {string} username - The user's new username
  * @param {string} password - The user's new password
@@ -127,7 +106,18 @@ router.post(
  * @throws {409} - If username already taken
  * @throws {400} - If username or password are not of the correct format
  */
-router.patch(
+/**
+ * Update a user's friends
+ * 
+ * @name PUT /api/users?friend=id
+ * 
+ * @param {string} friend - the friend's id
+ * @param {string} remove - whether to remove from the list
+ * @return {UserResponse} - the updated user
+ * @throws {403} - If the user is not logged in
+ * @throws {404} - If the friend id is not found, or the same as the user's id
+ */
+router.put(
   '/',
   [
     userValidator.isUserLoggedIn,
@@ -135,13 +125,29 @@ router.patch(
     userValidator.isUsernameNotAlreadyInUse,
     userValidator.isValidPassword
   ],
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (req.query.friend !== undefined){
+      next();
+      return;
+    }
     const userId = (req.session.userId as string) ?? ''; // Will not be an empty string since its validated in isUserLoggedIn
     const user = await UserCollection.updateOne(userId, req.body);
     res.status(200).json({
       message: 'Your profile was updated successfully.',
       user: util.constructUserResponse(user)
     });
+  },
+  [
+    userValidator.isFriendExists,
+    userValidator.isFriendDifferentThanUser
+  ],
+  async (req: Request, res: Response) => {
+    const userId = (req.session.userId as string) ?? ''
+    const user = await UserCollection.updateOneFriend(userId, req.query.friend as string, req.body.remove);
+    res.status(200).json({
+      message: "Your friends were updated successfully",
+      user: util.constructUserResponse(user)
+    })
   }
 );
 

@@ -34,12 +34,15 @@ export default {
 }
 
 body {
+  background-color: rgb(202, 168, 44);
+  color: rgb(23, 26, 33);
   height: 100vh;
   flex-direction: column;
   display: flex;
   padding: 0;
   margin: 0;
   font-size: 1.2em;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
 }
 
 main {
