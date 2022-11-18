@@ -48,7 +48,7 @@ nav {
 }
 
 a{
-  color: rgb(23,26,33);
+  color: rgb(23,26,32);
 }
 .title {
     font-size: 32px;
